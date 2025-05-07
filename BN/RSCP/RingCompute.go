@@ -1,60 +1,47 @@
 package RSCP
 
 import (
-	"crypto/rand"   // 产生随机数
-	"crypto/sha256" // SHA-256 哈希函数
-	"math/big"      // 大整数运算
-
 	bn256 "github.com/ethereum/go-ethereum/crypto/bn256/google"
+	"math/big"
 )
 
-// hashToZp 对 (U || M || 环成员公钥列表) 进行 SHA-256 哈希，映射到 Z_p。
-//
-//	U：单个 G1 群元素
-//	M：消息字节串
-//	ring：公钥列表
-//	order：群的阶 p
-func hashToZp(U *bn256.G1, M []byte, ring []*bn256.G1, order *big.Int) *big.Int {
-	// 将 U 序列化为字节
-	uBytes := U.Marshal()
-	h := sha256.New()
-	h.Write(uBytes)
-	h.Write(M)
-	for _, pk := range ring {
-		h.Write(pk.Marshal())
-	}
-	digest := h.Sum(nil)
-	z := new(big.Int).SetBytes(digest)
-	return z.Mod(z, order) // 返回 digest mod p
+func ComputeV(R, H_s, SK_S *big.Int) *bn256.G2 {
+	// 计算 h_s * sk_s
+	h_s_sk_s := new(big.Int).Mul(H_s, SK_S)
+
+	// 计算 r + h_s * sk_s
+	sum := new(big.Int).Add(R, h_s_sk_s)
+
+	// 模群阶 (bn256.Order)
+	sum.Mod(sum, bn256.Order)
+
+	// 使用 G2 的生成元计算 v = sum * Q
+	v := new(bn256.G2).ScalarBaseMult(sum)
+
+	return v
 }
 
-// sumHiPKiPlusUi 计算 ∑[h_i * PK_i + U_i]，在 G1 群内累加。
-//
-//	ring：公钥列表
-//	his：哈希值列表 h_i
-//	Us：随机元素列表 U_i
-func sumHiPKiPlusUi(ring []*bn256.G1, his []*big.Int, Us []*bn256.G1) *bn256.G1 {
-	S := new(bn256.G1) // 初始化为群单位元
-	for i := range ring {
-		// 仅对已生成的 (h_i, U_i) 项进行累加，跳过 nil 条目
-		if his[i] == nil || Us[i] == nil {
+func ComputeUS(r *big.Int, HiList []*big.Int, PKList []*bn256.G1, UiList []*bn256.G1, flag int) (US *bn256.G1) {
+
+	// 1. 计算 tmp1 = r \cdot P
+	tmp1 := new(bn256.G1).ScalarBaseMult(r)
+
+	// 2. 计算 tmpSum = \sum_{i \ne s}\Bigl(U_i + H_i \cdot \mathit{pk}_i\Bigr)
+	tmpSum := new(bn256.G1).ScalarBaseMult(big.NewInt(0))
+	for i, v := range UiList {
+		if flag == i {
 			continue
 		}
-		// tmp1 = h_i * PK_i
-		tmp1 := new(bn256.G1).ScalarMult(ring[i], his[i])
-		// tmp = tmp1 + U_i
-		tmp := new(bn256.G1).Add(tmp1, Us[i])
-		// 累加到 S
-		S.Add(S, tmp)
-	}
-	return S
-}
+		// 计算 tmp2 = H_i \cdot \mathit{pk}_i
+		tmp2 := ScalarMulG1(PKList[i], HiList[i])
+		// 计算 tmpSumPart = U_i + tmp2
+		tmpSumPart := AddG1(v, tmp2)
 
-// randomScalar 返回一个模 p 的随机数，用于生成私钥或内部随机值。
-func randomScalar(order *big.Int) (*big.Int, error) {
-	r, err := rand.Int(rand.Reader, order)
-	if err != nil {
-		return nil, err
+		tmpSum = AddG1(tmpSum, tmpSumPart)
 	}
-	return r, nil
+
+	// 3. 计算 tmp1 - tmpSum
+	US = SubG1(tmp1, tmpSum)
+
+	return
 }

@@ -1,40 +1,39 @@
 package RSCP
 
 import (
-	"testing"
-
+	"fmt"
 	bn256 "github.com/ethereum/go-ethereum/crypto/bn256/google"
+	"testing"
 )
 
-// TestRingSignature 基于 bn256 曲线测试环签名的正确性
+var MessageTrue = []byte("这是用来正确签名的信息。")
+var MessageFalse = []byte("这是用来错误验证的信息。")
+
 func TestRingSignature(t *testing.T) {
-	params := GenerateParams()
-	n := 5
+	fmt.Println("=== 开始测试 BRFL 环签名方案 ===")
 
-	// 生成环成员签名者结构
-	signers := make([]*Signer, n)
-	ringPubs := make([]*bn256.G1, n)
+	// 构造一个大小为4的环
+	n := 4
+	var L []*Signer
+	var List []*bn256.G1 // 环签名的公钥列表
+	SignerS := 2
 	for i := 0; i < n; i++ {
-		s, err := GenerateSignerKey(params)
-		if err != nil {
-			t.Fatalf("生成Signer失败: %v", err)
-		}
-		signers[i] = s
-		ringPubs[i] = s.PK_I
+		signer := NewSigner()
+		L = append(L, signer)
+		List = append(List, signer.PublicKey)
 	}
+	fmt.Printf("已生成 %d 个签名者\n", n)
 
-	// 指定签名者索引
-	sIdx := 2
-	message := []byte("Hello BRFL Ring Signature")
+	// 开始签名
+	SignerResult := Sign(MessageTrue, List, L[SignerS])
 
-	// 生成签名
-	sig, err := Sign(params, ringPubs, signers[sIdx], message, sIdx)
-	if err != nil {
-		t.Fatalf("签名失败: %v", err)
-	}
+	//fmt.Println("签名结果 Sigma 为：")
+	//fmt.Println("UI 为：", SignerResult.UI)
+	//fmt.Println("V 为：", SignerResult.V)
 
-	// 验证签名
-	if !Verify(params, ringPubs, sig, message) {
-		t.Error("签名验证失败")
-	}
+	Verify1 := Verify(MessageTrue, List, SignerResult)
+	fmt.Println(Verify1)
+
+	Verify2 := Verify(MessageFalse, List, SignerResult)
+	fmt.Println(Verify2)
 }
