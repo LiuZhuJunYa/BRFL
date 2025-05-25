@@ -1,7 +1,7 @@
 package BRFL
 
 import (
-	bn256 "github.com/ethereum/go-ethereum/crypto/bn256/google"
+	bls "github.com/kilic/bls12-381"
 	"math/big"
 )
 
@@ -14,7 +14,7 @@ func ComputePi(t *big.Int, e *big.Int, SS *big.Int) (Pi *big.Int) {
 	return
 }
 
-func ComputeC(rS *big.Int, skS *big.Int, pkS *bn256.G1, CS *big.Int, RM *bn256.G1, SS *big.Int) (C *big.Int) {
+func ComputeC(rS *big.Int, skS *big.Int, pkS *bls.PointG1, CS *big.Int, RM *bls.PointG1, SS *big.Int) (C *big.Int) {
 
 	// 1. 计算 tmp1 = r_s \cdot \mathit{sk}_s
 	tmp1 := MulZq(rS, skS)
@@ -26,7 +26,9 @@ func ComputeC(rS *big.Int, skS *big.Int, pkS *bn256.G1, CS *big.Int, RM *bn256.G
 	tmp3 := ScalarMulG1(RM, CS)
 
 	// 4. 计算 tmp4 = S_s \cdot P
-	tmp4 := new(bn256.G1).ScalarBaseMult(SS)
+	base := g1.One()
+	tmp4 := g1.New()
+	g1.MulScalarBig(tmp4, base, SS)
 
 	// 5. 计算 tmp3 + tmp4
 	tmp5 := AddG1(tmp3, tmp4)
@@ -49,13 +51,13 @@ func ComputeV(rS *big.Int, skS *big.Int, rS_ *big.Int, HS *big.Int) (V *big.Int)
 	return
 }
 
-func ComputeUS(rS_ *big.Int, pkS *bn256.G1, UiList []*bn256.G1, HiList []*big.Int, PKList []*bn256.G1, flag int) (US *bn256.G1) {
+func ComputeUS(rS_ *big.Int, pkS *bls.PointG1, UiList []*bls.PointG1, HiList []*big.Int, PKList []*bls.PointG1, flag int) (US *bls.PointG1) {
 
 	// 1. 计算 tmp1 = r'_s \cdot \mathit{pk}_s
 	tmp1 := ScalarMulG1(pkS, rS_)
 
 	// 2. 计算 tmpSum = \sum_{i \ne s}\Bigl(U_i + H_i \cdot \mathit{pk}_i\Bigr)
-	tmpSum := new(bn256.G1).ScalarBaseMult(big.NewInt(0))
+	tmpSum := g1.New()
 	for i, v := range UiList {
 		if flag == i {
 			continue
@@ -84,7 +86,7 @@ func ComputeSS(rS *big.Int, CS *big.Int, rM *big.Int) (SS *big.Int) {
 	return
 }
 
-func ComputeCS(rS *big.Int, skS *big.Int, pkS *bn256.G1, RS *bn256.G1) (CS *big.Int) {
+func ComputeCS(rS *big.Int, skS *big.Int, pkS *bls.PointG1, RS *bls.PointG1) (CS *big.Int) {
 
 	// 1. 计算 tmp1 = r_s \cdot \mathit{sk}_s
 	tmp1 := MulZq(rS, skS)

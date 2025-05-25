@@ -5,6 +5,45 @@ import (
 	"math/big"
 )
 
+// ComputeSum 排除 signer_index 后计算 H_i * PK_i + U_i 的和
+func ComputeSum(H_i []*big.Int, PK_List []*bn256.G1, U_i []*bn256.G1, signer_index int) *bn256.G1 {
+	// 初始化结果为 G1 群中的零点
+	sum := new(bn256.G1)
+
+	// 遍历所有 H_i, PK_List 和 U_i
+	for i := 0; i < len(H_i); i++ {
+		if i == signer_index {
+			// 跳过 signer_index
+			continue
+		}
+
+		// 计算 H_i * PK_i
+		H_PK := new(bn256.G1).ScalarMult(PK_List[i], H_i[i])
+
+		// 计算 H_i * PK_i + U_i
+		partialSum := new(bn256.G1).Add(H_PK, U_i[i])
+
+		// 将结果累加到 sum
+		sum.Add(sum, partialSum)
+	}
+
+	return sum
+}
+
+// VerifyPairing 验证 e(P, V) 是否等于 e(Sum, Q)
+func VerifyPairing(Sum *bn256.G1, V *bn256.G2) bool {
+	// 计算 e(P, V)，其中 P 是 G1 的生成元
+	P := new(bn256.G1).ScalarBaseMult(big.NewInt(1)) // G1 的生成元
+	pairing1 := bn256.Pair(P, V)
+
+	// 计算 e(Sum, Q)，其中 Q 是 G2 的生成元
+	Q := new(bn256.G2).ScalarBaseMult(big.NewInt(1)) // G2 的生成元
+	pairing2 := bn256.Pair(Sum, Q)
+
+	// 比较两者是否相等
+	return pairing1.String() == pairing2.String()
+}
+
 func ComputeV(R, H_s, SK_S *big.Int) *bn256.G2 {
 	// 计算 h_s * sk_s
 	h_s_sk_s := new(big.Int).Mul(H_s, SK_S)

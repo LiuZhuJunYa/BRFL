@@ -1,12 +1,11 @@
 package BRFL
 
 import (
-	bn256 "github.com/ethereum/go-ethereum/crypto/bn256/google"
+	bls "github.com/kilic/bls12-381"
 	"math/big"
-	"sync"
 )
 
-func Verify(Message []byte, PKList []*bn256.G1, SignerResult *Sigma) (Verify bool) {
+func Verify(Message []byte, PKList []*bls.PointG1, SignerResult *Sigma) (Verify bool) {
 
 	// 1. 计算 Hi 列表
 	HiList := make([]*big.Int, len(PKList))
@@ -17,7 +16,7 @@ func Verify(Message []byte, PKList []*bn256.G1, SignerResult *Sigma) (Verify boo
 	// 2. 计算 e、S_{\text{sum}}、S_{\text{pt}}
 	e := HashToZq(PKList, Message, SignerResult.T, SignerResult.C)
 
-	sSum := new(bn256.G1).ScalarBaseMult(big.NewInt(0))
+	sSum := g1.New()
 	for i, v := range SignerResult.UI {
 		// 计算 tmp2 = H_i \cdot \mathit{pk}_i
 		tmp1 := ScalarMulG1(PKList[i], HiList[i])
@@ -29,7 +28,9 @@ func Verify(Message []byte, PKList []*bn256.G1, SignerResult *Sigma) (Verify boo
 
 	tmp2 := ScalarMulG1(SignerResult.RM, SignerResult.C)
 	tmp3 := InvZq(e)
-	tmp4 := new(bn256.G1).ScalarBaseMult(SignerResult.Pi)
+	base := g1.One()
+	tmp4 := g1.New()
+	g1.MulScalarBig(tmp4, base, SignerResult.Pi)
 	tmp5 := SubG1(SignerResult.T, tmp4)
 	tmp6 := ScalarMulG1(tmp5, tmp3)
 	sPt := AddG1(tmp2, tmp6)
@@ -39,41 +40,46 @@ func Verify(Message []byte, PKList []*bn256.G1, SignerResult *Sigma) (Verify boo
 	cCheck := HashToZq(tmp7, sPt)
 
 	Verify = CompareBigInts(SignerResult.C, cCheck)
+
 	return
 }
 
 // Sign 签名函数
-func Sign(Message []byte, PKList []*bn256.G1, SignerS *Signer) *Sigma {
+func Sign(Message []byte, PKList []*bls.PointG1, SignerS *Signer) *Sigma {
 
 	// 1.生成随机数 $r_M$ 并计算 $R_M = r_M \cdot P$，以混淆后续签名的可追踪性
 	rM := RandomZq()
-	RM := new(bn256.G1).ScalarBaseMult(rM)
+	base := g1.One()
+	RM := g1.New()
+	g1.MulScalarBig(RM, base, rM)
 
 	// 2. 生成随机数 $r_S$ ，得到中间值 $R_S = r_S \cdot P$ ，并基于哈希函数计算 $C_S$ 和 $S_S$
 	rS := RandomZq()
-	RS := new(bn256.G1).ScalarBaseMult(rS)
+	RS := g1.New()
+	g1.MulScalarBig(RS, base, rS)
 	CS := ComputeCS(rS, SignerS.PrivateKey, SignerS.PublicKey, RS)
 	SS := ComputeSS(rS, CS, rM)
 
-	var wg sync.WaitGroup
-	var t *big.Int
-	var T *bn256.G1
-	var C *big.Int
-	var e *big.Int
-	var Pi *big.Int
-	wg.Add(1) // 需要等待 n 个并发任务完成
-	go func() {
-		defer wg.Done()
-		// 执行任务
-		t = RandomZq()
-		T = new(bn256.G1).ScalarBaseMult(t)
-		C = ComputeC(rS, SignerS.PrivateKey, SignerS.PublicKey, CS, RM, SS)
-		e = HashToZq(PKList, Message, T, C)
-		Pi = ComputePi(t, e, SS)
-	}()
+	//var wg sync.WaitGroup
+	//var t *big.Int
+	//var T *bls.PointG1
+	//var C *big.Int
+	//var e *big.Int
+	//var Pi *big.Int
+	//wg.Add(1) // 需要等待 n 个并发任务完成
+	//go func() {
+	//	defer wg.Done()
+	//	// 执行任务
+	//	t = RandomZq()
+	//	T = g1.New()
+	//	g1.MulScalarBig(T, base, t)
+	//	C = ComputeC(rS, SignerS.PrivateKey, SignerS.PublicKey, CS, RM, SS)
+	//	e = HashToZq(PKList, Message, T, C)
+	//	Pi = ComputePi(t, e, SS)
+	//}()
 
 	// 3. 为环内其他成员（ $i \neq s$ ）随机分配辅助量 $U_i \in G$ ，并计算 H_i
-	UiList := make([]*bn256.G1, len(PKList))
+	UiList := make([]*bls.PointG1, len(PKList))
 	HiList := make([]*big.Int, len(PKList))
 	var flag int // 记住公钥位置下标
 	for i, v := range PKList {
@@ -94,12 +100,13 @@ func Sign(Message []byte, PKList []*bn256.G1, SignerS *Signer) *Sigma {
 	V := ComputeV(rS, SignerS.PrivateKey, rS_, HS)
 
 	// 5. 通过再一次随机数 $t \in (Z_q)^*$ 构造 $T = t \cdot P$ ，并计算 C、e、Pi
-	wg.Wait() // 阻塞，直到全部任务完成
-	//t := RandomZq()
-	//T := new(bn256.G1).ScalarBaseMult(t)
-	//C := ComputeC(rS, SignerS.PrivateKey, SignerS.PublicKey, CS, RM, SS)
-	//e := HashToZq(PKList, Message, T, C)
-	//Pi := ComputePi(t, e, SS)
+	//wg.Wait() // 阻塞，直到全部任务完成
+	t := RandomZq()
+	T := g1.New()
+	g1.MulScalarBig(T, base, t)
+	C := ComputeC(rS, SignerS.PrivateKey, SignerS.PublicKey, CS, RM, SS)
+	e := HashToZq(PKList, Message, T, C)
+	Pi := ComputePi(t, e, SS)
 
 	return &Sigma{
 		RM: RM,

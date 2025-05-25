@@ -13,27 +13,7 @@ func Verify(Message []byte, PKList []*bn256.G1, SignerResult *Sigma) bool {
 		HiList[i] = HashToZq(v, Message, PKList)
 	}
 
-	// 2. 验证 e(P,V)=e(i=1∑n[hi⋅PKi+Ui],Q).
-	P := new(bn256.G1).ScalarBaseMult(big.NewInt(1)) // G1 的生成元
-	Q := new(bn256.G2).ScalarBaseMult(big.NewInt(1)) // G2 的生成元
-	tmp1 := bn256.Pair(P, SignerResult.V)
-	tmpSum := new(bn256.G1).ScalarBaseMult(big.NewInt(0))
-	for i, v := range HiList {
-		tmp2 := ScalarMulG1(PKList[i], v)
-		tmp3 := AddG1(tmp2, SignerResult.UI[i])
-		tmpSum = AddG1(tmpSum, tmp3)
-	}
-	tmp4 := bn256.Pair(tmpSum, Q)
-
-	var flag bool
-
-	if tmp1.String() == tmp4.String() {
-		flag = true
-	} else {
-		flag = false
-	}
-
-	return flag
+	return VerifyPairing(ComputeSum(HiList, PKList, SignerResult.UI, -1), SignerResult.V)
 }
 
 // Sign 签名函数
